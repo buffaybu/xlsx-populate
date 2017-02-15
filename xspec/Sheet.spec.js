@@ -1,11 +1,7 @@
 "use strict";
 
-var utils = require("../lib/utils");
-var Workbook = require("../lib/Workbook");
-
 var proxyquire = require("proxyquire").noCallThru();
-var DOMParser = require("xmldom").DOMParser;
-var parser = new DOMParser();
+
 
 var findChildNodes = function (node, tag) {
     var result = [];
@@ -31,19 +27,30 @@ var getNodeAttribute = function (node, attribute) {
     return node.getAttribute(attribute);
 };
 
-xdescribe("Sheet", function () {
-    var Row, Sheet, workbook, sheetNode, sheetXML, sheet;
+describe("Sheet", function () {
+    var Row, Sheet  // Classes
+    var workbook, sheetNode, sheetXML, row, sheet // Instances
 
     beforeEach(function () {
         Row = jasmine.createSpy("Row");
         Sheet = proxyquire("../lib/Sheet", { "./Row": Row });
+
         workbook = {};
-        sheetNode = parser.parseFromString('<sheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" name="Sheet1" sheetId="1"/>').documentElement;
-        sheetXML = parser.parseFromString('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"/></sheetData></worksheet>').documentElement;
-        sheet = new Sheet(workbook, sheetNode, sheetXML);
+        sheetXML = '<sheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" name="Sheet1" sheetId="1"/>';
+        sheetXML = '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"/></sheetData></worksheet>';
+
+        row = jasmine.createSpyObj("Row", ["sheet", "rowNumber"]);
+        row.sheet.and.callFake(function () { return sheet; });
+        row.rowNumber.and.callFake(function () { return 1; });
+        Row.and.returnValue(row);
+
+        sheet = new Sheet(...);  // TODO
     });
 
     describe("workbook", function () {
+        it("should throw an error if a value is provided", function () {
+            expect(function () { sheet.workbook('foo') }).toThrow();
+        });
         it("should return the workbook", function () {
             expect(sheet.workbook()).toBe(workbook);
         });
@@ -51,38 +58,42 @@ xdescribe("Sheet", function () {
 
     describe("name", function () {
         it("should return the sheet name", function () {
-            expect(sheet.getName()).toBe("Sheet1");
+            expect(sheet.name()).toBe("Sheet1");
         });
-    });
-
-    describe("name", function () {
-        it("should set the sheet name", function () {
-            sheet.name("some name");
-            expect(sheetNode.toString()).toBe('<sheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" name="some name" sheetId="1"/>');
+        it("should set the sheet name and return the same sheet", function () {
+            expect(sheet.name("foo")).toBe(sheet);
+            expect(sheet.name()).toBe("foo");
         });
-    });
+    })
 
     describe("row", function () {
-        it("should create a new row node if it doesn't exist", function () {
-            sheet.row(3);
-            expect(Row).toHaveBeenCalledWith(sheet, sheetXML.firstChild.lastChild);
-            expect(sheetXML.toString()).toBe('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"/><row r="3"/></sheetData></worksheet>');
-        });
-
-        it("should use an existing row node if it does exist", function () {
+        it("should use an existing row node if it exists", function () {
             sheet.row(1);
-            expect(Row).toHaveBeenCalledWith(sheet, sheetXML.firstChild.firstChild);
-            expect(sheetXML.toString()).toBe('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"/></sheetData></worksheet>');
+            expect(Row).not.toHaveBeenCalled();
+            //expect(sheet._sheetDataNode.childNodes.length).toEqual(1);
+            expect(sheet._rows.length).toEqual(1);
+            //expect(sheet._xml.toString()).toEqual('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"/></sheetData></worksheet>');
         });
-
-        it("should create rows in order", function () {
+        it("should create a new row node if it does not exist", function () {
+            sheet.row(3);
+            expect(Row).toHaveBeenCalled();
+            expect(Row.calls.count()).toEqual(1);
+            //expect(sheet._sheetDataNode.childNodes.length).toEqual(2);
+            expect(sheet._rows.length).toEqual(2);
+            //expect(sheet._xml.toString()).toEqual('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"/><row r="3"/></sheetData></worksheet>');
+        });
+        it('should create rows in order', function () {
             sheet.row(3);
             sheet.row(2);
-            expect(sheetXML.toString()).toBe('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"/><row r="2"/><row r="3"/></sheetData></worksheet>');
+            expect(Row).toHaveBeenCalled();
+            expect(Row.calls.count()).toEqual(2);
+            //expect(sheet._sheetDataNode.childNodes.length).toEqual(3);
+            expect(sheet._rows.length).toEqual(3);
+            //expect(sheet._xml.toString()).toBe('<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"/><row r="2"/><row r="3"/></sheetData></worksheet>');
         });
     });
 
-    describe("cell", function () {
+    xdescribe("cell", function () {
         var getCell;
         beforeEach(function () {
             getCell = jasmine.createSpy("getCell");
@@ -138,7 +149,7 @@ xdescribe("Sheet", function () {
             });
         });
 
-        describe("stochastic access", function () {
+        xdescribe("stochastic access", function () {
             var MAX_ROW = 100;
             var MAX_COLUMN = 100;
             var MAX_EDIT = 1000;
